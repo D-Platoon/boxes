@@ -14,7 +14,37 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from boxes import *
+from boxes import edges, Color
 from boxes.lids import _TopEdge, LidSettings
+
+
+def char2string(s):
+    new = "" 
+    for x in s: 
+        new += x 
+ 
+    # return string 
+    return new 
+
+class FingerHoleEdgeSettings(edges.Settings):
+    """Settings for FingerHoleEdge"""
+    absolute_params = {
+        "wallheight": 0,
+        "fingerholedepth": 0,
+    }
+
+class FingerHoleEdge(edges.BaseEdge):
+    """An edge with room to get your fingers around cards"""
+    def __call__(self, length, **kw):
+        depth = self.settings.fingerholedepth-10
+        self.edge(length/2-10, tabs=2)
+        self.corner(90)
+        self.edge(depth, tabs=2)
+        self.corner(-180, 10)
+        self.edge(depth, tabs=2)
+        self.corner(90)
+        self.edge(length/2-10, tabs=2)
+
 
 class TypeTray(_TopEdge):
     """Type tray - allows only continuous walls"""
@@ -41,8 +71,52 @@ class TypeTray(_TopEdge):
             "--gripwidth", action="store", type=float, default=70,
             dest="gw", help="width of th grip hole in mm (zero for no hole)")
         self.argparser.add_argument(
-            "--handle", type=boolarg, default=False, help="add handle to the bottom (changes bottom edge in the front)",
-        )
+            "--handle", type=boolarg, default=False, help="add handle to the bottom (changes bottom edge in the front)")
+        self.argparser.add_argument(
+            "--fingerhole", action="store", type=str, default="regular",
+            choices=['regular', 'deep', 'custom', 'none'],
+            help="Depth of cutout to grab the cards")
+        self.argparser.add_argument(
+            "--fingerhole_depth", action="store", type=float, default=20,
+            help="Depth in mm of cutout if fingerhole is set to 'custom'. Disabled otherwise.")
+        self.argparser.add_argument(
+            "--text_size", action="store", type=int, default=12,
+            help="Textsize in mm for the traycontent")
+        self.argparser.add_argument(
+            "--text_alignment", action="store", type=str, default="left",
+            choices=['left', 'center', 'right'],
+            help="Text Alignment")
+        self.argparser.add_argument(
+            "--text_distance_x", action="store", type=float, default=2.0,
+            help="Distance in X from edge of tray in mm. Has no effect when text is centered.")
+        self.argparser.add_argument(
+            "--text_distance_y", action="store", type=float, default=2.0,
+            help="Distance in Y from edge of tray in mm.")
+        if self.UI == "web":
+            self.argparser.add_argument(
+                "--layout", action="store", type=str, default="1\r\n2\r\n3\r\n4\r\n",
+                help="Every line is the text of one tray. Beginning with front left")
+        else:
+            self.argparser.add_argument(
+                "--input", action="store", type=argparse.FileType('r'),
+                default="traylayout.txt",
+                help="layout file")
+            self.layout = None
+
+    @property
+    def fingerholedepth(self):
+        if self.fingerhole == 'custom':
+            return self.fingerhole_depth
+        elif self.fingerhole == 'regular':
+            a = self.h/4
+            if a < 35:
+                return a
+            else:
+                return 35
+        elif self.fingerhole == 'deep':
+            return self.h-self.thickness-10
+        elif self.fingerhole == 'none':
+            return 0
 
     def xSlots(self):
         posx = -0.5 * self.thickness
@@ -82,6 +156,40 @@ class TypeTray(_TopEdge):
         r = min(self.gw, self.gh) / 2.0
         self.rectangularHole(x / 2.0, self.gh * 1.5, self.gw, self.gh, r)
 
+    def textCB(self):
+        ## declare text-variables
+        textsize = self.text_size
+        texty = self.hi - textsize - self.text_distance_y
+        if self.text_alignment == 'center':
+            texty -= self.fingerholedepth
+        textdistance = self.sx[0] + self.thickness
+
+        ## Generate text-fields for each tray
+        for n in range(len(self.sx)):
+            # Break for-loop if further list is empty
+            if self.textnumber >= len(self.textcontent):
+                break
+
+            textx = n * (self.sx[0] + self.thickness)
+            # Calculate textposition
+            if self.text_alignment == 'left':
+                textx += self.text_distance_x
+            elif  self.text_alignment == 'center':
+                textx += self.sx[0] / 2
+            elif self.text_alignment == 'right':
+                textx += self.sx[0] - self.text_distance_x
+
+            # Generate text
+            self.text(
+                "%s" % self.textcontent[self.textnumber],
+                textx,
+                texty,
+                0,
+                align=self.text_alignment,
+                fontsize=textsize,
+                color=Color.ETCHING)
+            self.textnumber +=1
+
     def render(self):
         if self.outside:
             self.sx = self.adjustSize(self.sx)
@@ -103,6 +211,9 @@ class TypeTray(_TopEdge):
         self.closedtop = self.top_edge in "fFhŠ"
 
         bh = self.back_height if self.top_edge == "e" else 0.0
+
+        self.textcontent = char2string(self.layout).split("\r\n")
+        self.textnumber = 0
 
         # x sides
 
@@ -140,14 +251,30 @@ class TypeTray(_TopEdge):
 
         be = "f" if b != "e" else "e"
 
+        # set finger holes
+        s = FingerHoleEdgeSettings(thickness=t, wallheight=h, fingerholedepth=self.fingerholedepth)
+        p = FingerHoleEdge(self, s)
+        p.char = "A"
+        self.addPart(p)
+
+        ######
         for i in range(len(self.sy) - 1):
-            e = [edges.SlottedEdge(self, self.sx, be), "f",
-                 edges.SlottedEdge(self, self.sx[::-1], "e", slots=0.5 * hi), "f"]
+
+            ## set horizontal divider
+            ### if fingerholedepth is set to 0 create a straight edge, otherwise a fingerhole
+            if self.fingerholedepth == 0:
+                e = [edges.SlottedEdge(self, self.sx, be), "f",
+                     edges.SlottedEdge(self, self.sx[::-1], "e", slots=0.5 * hi), "f"]
+            else:
+                e = [edges.SlottedEdge(self, self.sx, be), "f",
+                    edges.SlottedEdge(self, self.sx[::-1], "A", slots=0.5 * hi), "f"]
+
             if self.closedtop and sameh:
                 e = [edges.SlottedEdge(self, self.sx, be), "f",
                      edges.SlottedEdge(self, self.sx[::-1], "f", slots=0.5 * hi), "f"]
 
-            self.rectangularWall(x, hi, e, move="up", label=f"inner x {i+1}")
+            self.rectangularWall(x, hi, e, move="up", callback=[self.textCB],
+                                 label=f"inner x {i+1}")
 
         # top / lid
         if self.closedtop and sameh:
@@ -193,7 +320,3 @@ class TypeTray(_TopEdge):
                 e = [edges.SlottedEdge(self, self.sy, be, slots=0.5 * hi),"f",
                      edges.SlottedEdge(self, self.sy[::-1], "f"), "f"]
             self.rectangularWall(y, hi, e, move="up", label=f"inner y {i+1}")
-
-
-
-
