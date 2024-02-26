@@ -18,20 +18,11 @@ from boxes import edges, Color
 from boxes.lids import _TopEdge, LidSettings
 
 
-def char2string(s):
-    new = "" 
-    for x in s: 
-        new += x 
- 
-    # return string 
-    return new 
-
 class FingerHoleEdgeSettings(edges.Settings):
     """Settings for FingerHoleEdge"""
     absolute_params = {
         "wallheight": 0,
-        "fingerholedepth": 0,
-    }
+        "fingerholedepth": 0}
 
 class FingerHoleEdge(edges.BaseEdge):
     """An edge with room to get your fingers around cards"""
@@ -44,7 +35,6 @@ class FingerHoleEdge(edges.BaseEdge):
         self.edge(depth, tabs=2)
         self.corner(90)
         self.edge(length/2-10, tabs=2)
-
 
 class TypeTray(_TopEdge):
     """Type tray - allows only continuous walls"""
@@ -94,7 +84,7 @@ class TypeTray(_TopEdge):
             help="Distance in Y from edge of tray in mm.")
         if self.UI == "web":
             self.argparser.add_argument(
-                "--layout", action="store", type=str, default="1\r\n2\r\n3\r\n4\r\n",
+                "--layout", action="store", type=str, default="1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8\r\n",
                 help="Every line is the text of one tray. Beginning with front left")
         else:
             self.argparser.add_argument(
@@ -212,7 +202,7 @@ class TypeTray(_TopEdge):
 
         bh = self.back_height if self.top_edge == "e" else 0.0
 
-        self.textcontent = char2string(self.layout).split("\r\n")
+        self.textcontent = "".join(self.layout).split("\r\n")
         self.textnumber = 0
 
         # x sides
